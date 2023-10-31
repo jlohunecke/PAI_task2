@@ -114,7 +114,7 @@ class SWAGInference(object):
         model_dir: pathlib.Path,
         # TODO(1): change inference_mode to InferenceMode.SWAG_DIAGONAL
         # TODO(2): change inference_mode to InferenceMode.SWAG_FULL
-        inference_mode: InferenceMode = InferenceMode.MAP,
+        inference_mode: InferenceMode = InferenceMode.SWAG_DIAGONAL,
         # TODO(2): optionally add/tweak hyperparameters
         swag_epochs: int = 30,
         swag_learning_rate: float = 0.045,
@@ -290,6 +290,7 @@ class SWAGInference(object):
 
         self.network.eval()
 
+        # OWN TODO: the below suggested optimization is not part of the code yet
         # Perform Bayesian model averaging:
         # Instead of sampling self.bma_samples networks (using self.sample_parameters())
         # for each datapoint, you can save time by sampling self.bma_samples networks,
@@ -297,13 +298,13 @@ class SWAGInference(object):
         per_model_sample_predictions = []
         for _ in tqdm.trange(self.bma_samples, desc="Performing Bayesian model averaging"):
             # TODO(1): Sample new parameters for self.network from the SWAG approximate posterior
-            sampled_param = np.random.multivariate_normal(self.theta_SWA, np.diag(self.theta_bar_2-self.theta_SWA**2))
+            self.sample_parameters()
 
             # TODO(1): Perform inference for all samples in `loader` using current model sample,
             #  and add the predictions to per_model_sample_predictions
-            for data in loader:
-                per_model_sample_predictions.append()
-            raise NotImplementedError("Perform inference using current model")
+            predictions = self.predict_probabilities_map(loader)
+            
+            per_model_sample_predictions.append(predictions)
 
         assert len(per_model_sample_predictions) == self.bma_samples
         assert all(
@@ -313,9 +314,11 @@ class SWAGInference(object):
             for model_sample_predictions in per_model_sample_predictions
         )
 
-        # TODO(1): Average predictions from different model samples into bma_probabilities
-        raise NotImplementedError("Aggregate predictions from model samples")
-        bma_probabilities = ...
+        # Stack all model predictions into a single tensor
+        all_predictions = torch.stack(per_model_sample_predictions)  # Shape: [bma_samples, N, 6]
+
+        # Average over the bma_samples dimension to get Bayesian Model Averaged probabilities
+        bma_probabilities = all_predictions.mean(dim=0)
 
         assert bma_probabilities.dim() == 2 and bma_probabilities.size(1) == 6  # N x C
         return bma_probabilities
@@ -332,9 +335,9 @@ class SWAGInference(object):
             # SWAG-diagonal part
             z_1 = torch.randn(param.size())
             # TODO(1): Sample parameter values for SWAG-diagonal
-            raise NotImplementedError("Sample parameter for SWAG-diagonal")
-            current_mean = ...
-            current_std = ...
+            current_mean = self.theta_SWA[name]
+            current_std = torch.sqrt(self.theta_bar_2[name] - self.theta_SWA[name]**2)
+
             assert current_mean.size() == param.size() and current_std.size() == param.size()
 
             # Diagonal part
@@ -351,7 +354,7 @@ class SWAGInference(object):
 
         # TODO(1): Don't forget to update batch normalization statistics using self._update_batchnorm()
         #  in the appropriate place!
-        raise NotImplementedError("Update batch normalization statistics for newly sampled network")
+        self._update_batchnorm()
 
     def predict_labels(self, predicted_probabilities: torch.Tensor) -> torch.Tensor:
         """
