@@ -112,8 +112,8 @@ class SWAGInference(object):
         self,
         train_xs: torch.Tensor,
         model_dir: pathlib.Path,
-        # TODO(1): change inference_mode to InferenceMode.SWAG_DIAGONAL
-        # TODO(2): change inference_mode to InferenceMode.SWAG_FULL
+        ## TODO(1): change inference_mode to InferenceMode.SWAG_DIAGONAL
+        ## TODO(2): change inference_mode to InferenceMode.SWAG_FULL
         inference_mode: InferenceMode = InferenceMode.SWAG_FULL,
         # TODO(2): optionally add/tweak hyperparameters
         swag_epochs: int = 30,
@@ -149,7 +149,7 @@ class SWAGInference(object):
         self.train_dataset = torch.utils.data.TensorDataset(train_xs)
 
         # SWAG-diagonal
-        # TODO(1): create attributes for SWAG-diagonal
+        ## TODO(1): create attributes for SWAG-diagonal
         #  Hint: self._create_weight_copy() creates an all-zero copy of the weights
         #  as a dictionary that maps from weight name to values.
         #  Hint: you never need to consider the full vector of weights,
@@ -161,7 +161,7 @@ class SWAGInference(object):
             self.n = 0
 
         # Full SWAG
-        # TODO(2): create attributes for SWAG-FULL
+        ## TODO(2): create attributes for SWAG-FULL
         #  Hint: check collections.deque
 
         if inference_mode == InferenceMode.SWAG_FULL:
@@ -184,13 +184,13 @@ class SWAGInference(object):
 
         # SWAG-diagonal
         for name, param in current_params.items():
-            # TODO(1): update SWAG-diagonal attributes for weight `name` using `current_params` and `param`
+            ## TODO(1): update SWAG-diagonal attributes for weight `name` using `current_params` and `param`
             self.theta_SWA[name] = (self.n * self.theta_SWA[name] + param)/(self.n + 1)
             self.theta_bar_2[name] = (self.n * self.theta_bar_2[name] + param**2)/(self.n + 1)
 
         # Full SWAG
         if self.inference_mode == InferenceMode.SWAG_FULL:
-            # TODO(2): update full SWAG attributes for weight `name` using `current_params` and `param`
+            ## TODO(2): update full SWAG attributes for weight `name` using `current_params` and `param`
             for name, param in current_params.items():
                 self.D_hat[name].append(param - self.theta_SWA[name])
 
@@ -214,15 +214,18 @@ class SWAGInference(object):
         loss = torch.nn.CrossEntropyLoss(
             reduction="mean",
         )
-        # TODO(2): Update SWAGScheduler instantiation if you decided to implement a custom schedule.
+        ## TODO(2): Update SWAGScheduler instantiation if you decided to implement a custom schedule.
         #  By default, this scheduler just keeps the initial learning rate given to `optimizer`.
         lr_scheduler = SWAGScheduler(
             optimizer,
             epochs=self.swag_epochs,
             steps_per_epoch=len(loader),
+            alpha_1=0.05,
+            alpha_2=0.001,
+            cycle_length=3,
         )
 
-        # TODO(1): Perform initialization for SWAG fitting
+        ## TODO(1): Perform initialization for SWAG fitting
         self.theta_SWA = {name: param.detach() for name, param in self.network.named_parameters()}
         self.theta_bar_2 = {name: param.detach()**2 for name, param in self.network.named_parameters()}
 
@@ -255,7 +258,7 @@ class SWAGInference(object):
                     pbar_dict["avg. epoch accuracy"] = average_accuracy
                     pbar.set_postfix(pbar_dict)
 
-                # TODO(1): Implement periodic SWAG updates using the attributes defined in __init__
+                ## TODO(1): Implement periodic SWAG updates using the attributes defined in __init__
                 if epoch % self.swag_update_freq == 0:
                     self.n = epoch / self.swag_update_freq
                     self.update_swag()
@@ -301,10 +304,10 @@ class SWAGInference(object):
         # and perform inference with each network on all samples in loader.
         per_model_sample_predictions = []
         for _ in tqdm.trange(self.bma_samples, desc="Performing Bayesian model averaging"):
-            # TODO(1): Sample new parameters for self.network from the SWAG approximate posterior
+            ## TODO(1): Sample new parameters for self.network from the SWAG approximate posterior
             self.sample_parameters()
 
-            # TODO(1): Perform inference for all samples in `loader` using current model sample,
+            ## TODO(1): Perform inference for all samples in `loader` using current model sample,
             #  and add the predictions to per_model_sample_predictions
             predictions = self.predict_probabilities_map(loader)
             
@@ -338,7 +341,7 @@ class SWAGInference(object):
         for name, param in self.network.named_parameters():
             # SWAG-diagonal part
             z_1 = torch.randn(param.size())
-            # TODO(1): Sample parameter values for SWAG-diagonal
+            ## TODO(1): Sample parameter values for SWAG-diagonal
             current_mean = self.theta_SWA[name]
             current_std = torch.sqrt(self.theta_bar_2[name] - self.theta_SWA[name]**2) #TODO: check if this is correct
 
@@ -349,7 +352,7 @@ class SWAGInference(object):
 
             # Full SWAG part
             if self.inference_mode == InferenceMode.SWAG_FULL:
-                # TODO(2): Sample parameter values for full SWAG
+                ## TODO(2): Sample parameter values for full SWAG
                 z_2 = torch.randn(self.deviation_matrix_max_rank)
 
                 sampled_param = (current_mean + 1/np.sqrt(2) *
@@ -358,7 +361,7 @@ class SWAGInference(object):
             # Modify weight value in-place; directly changing self.network
             param.data = sampled_param
 
-        # TODO(1): Don't forget to update batch normalization statistics using self._update_batchnorm()
+        ## TODO(1): Don't forget to update batch normalization statistics using self._update_batchnorm()
         #  in the appropriate place!
         self._update_batchnorm()
 
@@ -599,19 +602,29 @@ class SWAGScheduler(torch.optim.lr_scheduler.LRScheduler):
 
         This method should return a single float: the new learning rate.
         """
-        # TODO(2): Implement a custom schedule if desired
-        return old_lr
+        ## TODO(2): Implement a custom schedule if desired
+        t_i = 1.0/self.cycle_length * (((current_epoch-1) % self.cycle_length)+1)
+        alpha_i = (1-t_i)*self.alpha_1 + t_i*self.alpha_2
 
-    # TODO(2): Add and store additional arguments if you decide to implement a custom scheduler
+        return alpha_i
+
+    ## TODO(2): Add and store additional arguments if you decide to implement a custom scheduler
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
         epochs: int,
         steps_per_epoch: int,
+        alpha_1: float,
+        alpha_2: float,
+        cycle_length: int,
     ):
         self.epochs = epochs
         self.steps_per_epoch = steps_per_epoch
+        self.alpha_1 = alpha_1
+        self.alpha_2 = alpha_2
+        self.cycle_length = cycle_length
         super().__init__(optimizer, last_epoch=-1, verbose=False)
+
 
     def get_lr(self):
         if not self._get_lr_called_within_step:
